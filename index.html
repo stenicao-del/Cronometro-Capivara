@@ -129,7 +129,7 @@
             overflow: hidden;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             padding: 20px;
-            overflow-x: auto; /* Permite rolagem horizontal na tabela */
+            overflow-x: auto;
         }
         .category-ranking h2 {
             background-color: #333;
@@ -141,7 +141,7 @@
         }
         .category-ranking table {
             width: 100%;
-            min-width: 600px; /* Garante que a tabela não fique espremida */
+            min-width: 600px;
             border-collapse: collapse;
         }
         .category-ranking th, .category-ranking td {
@@ -183,8 +183,6 @@
             border-radius: 5px;
             color: #e0e0e0;
         }
-
-        /* --- MEDIA QUERIES PARA ADAPTAÇÃO MOBILE --- */
         @media (max-width: 768px) {
             h1 {
                 font-size: 2em;
@@ -214,7 +212,6 @@
             <h1>Capivara Clube - Dashboard</h1>
             <p>Status da Conexão: <span id="connection-status" style="color: #FF5722;">Desconectado</span></p>
         </header>
-
         <div class="live-section">
             <div class="time-box">
                 <h2>Pista 1</h2>
@@ -225,7 +222,6 @@
                 <div id="pista2-time" class="time-display">0.000s</div>
             </div>
         </div>
-
         <div class="live-section">
             <div class="record-box" id="record-pista1-box">
                 <h2>RECORD PISTA 1</h2>
@@ -236,7 +232,6 @@
                 <div id="record-pista2-time" class="record-display">0.000s</div>
             </div>
         </div>
-
         <div class="live-section">
             <div class="king-box">
                 <h2>REI DA PISTA</h2>
@@ -247,12 +242,10 @@
                 </div>
             </div>
         </div>
-
         <div class="category-filter">
             <label for="categoria">Filtrar por Categoria:</label>
             <select id="categoria" onchange="updateRanking()"></select>
         </div>
-
         <div class="ranking-section">
             <div class="category-ranking">
                 <h2>Ranking</h2>
@@ -274,16 +267,20 @@
             </div>
         </div>
     </div>
-
     <script>
         const googleScriptURL = "https://script.google.com/macros/s/AKfycbzcahO1fxsYOJsnznUs98co4OQByHxnmLkVET1F2_pUuXqf7XThRmgBXbkt9I-7NcM/exec";
         const mqttServer = 'wss://broker.hivemq.com:8884/mqtt';
         const clientId = 'web_dashboard_' + Math.random().toString(16).substr(2, 8);
+        
+        // Tópicos de resultado (tempo final)
         const TOPIC_RESULTADO_P1 = "cronometro/resultado/pista1";
         const TOPIC_RESULTADO_P2 = "cronometro/resultado/pista2";
 
-        const client = mqtt.connect(mqttServer, { clientId: clientId });
+        // Tópicos de início (início de nova volta)
+        const TOPIC_INICIO_P1 = "cronometro/inicio/pista1";
+        const TOPIC_INICIO_P2 = "cronometro/inicio/pista2";
 
+        const client = mqtt.connect(mqttServer, { clientId: clientId });
         const connectionStatusEl = document.getElementById('connection-status');
         const pista1TimeEl = document.getElementById('pista1-time');
         const pista2TimeEl = document.getElementById('pista2-time');
@@ -296,25 +293,23 @@
         const kingNameEl = document.getElementById('king-name');
         const kingCategoryEl = document.getElementById('king-category');
         const kingTimeEl = document.getElementById('king-time');
-
         let recordPista1 = Infinity;
         let recordPista2 = Infinity;
-
         client.on('connect', () => {
             console.log('Conectado ao broker MQTT.');
             connectionStatusEl.textContent = 'Conectado';
             connectionStatusEl.style.color = '#4CAF50';
             client.subscribe(TOPIC_RESULTADO_P1);
             client.subscribe(TOPIC_RESULTADO_P2);
+            client.subscribe(TOPIC_INICIO_P1);
+            client.subscribe(TOPIC_INICIO_P2);
             updateRanking();
         });
-
         client.on('error', (error) => {
             console.error('Erro de conexão MQTT:', error);
             connectionStatusEl.textContent = 'Erro';
             connectionStatusEl.style.color = '#F44336';
         });
-
         client.on('message', (topic, message) => {
             const messageString = message.toString();
             if (topic === TOPIC_RESULTADO_P1) {
@@ -326,9 +321,12 @@
                 pista2TimeEl.textContent = tempo.toFixed(3) + "s";
                 checkAndUpdateRecords(tempo, 'pista2');
                 setTimeout(updateRanking, 2000);
+            } else if (topic === TOPIC_INICIO_P1) {
+                pista1TimeEl.textContent = "0.000s";
+            } else if (topic === TOPIC_INICIO_P2) {
+                pista2TimeEl.textContent = "0.000s";
             }
         });
-
         function checkAndUpdateRecords(tempo, pista) {
             if (pista === 'pista1' && tempo < recordPista1 && tempo > 0) {
                 recordPista1 = tempo;
@@ -346,7 +344,6 @@
                 }, 3000);
             }
         }
-
         async function updateRanking() {
             try {
                 const response = await fetch(googleScriptURL);
@@ -359,10 +356,8 @@
                     if (!Array.isArray(data)) {
                         throw new Error("Resposta do script inválida. Esperado um array.");
                     }
-
                     let recordP1Found = Infinity;
                     let recordP2Found = Infinity;
-                    
                     data.forEach(item => {
                         if (item.tempo_p1 > 0 && item.tempo_p1 < recordP1Found) {
                             recordP1Found = item.tempo_p1;
@@ -371,7 +366,6 @@
                             recordP2Found = item.tempo_p2;
                         }
                     });
-
                     if (recordP1Found < recordPista1) {
                         recordPista1 = recordP1Found;
                         recordPista1TimeEl.textContent = recordPista1.toFixed(3) + 's';
@@ -380,7 +374,6 @@
                         recordPista2 = recordP2Found;
                         recordPista2TimeEl.textContent = recordP2Found.toFixed(3) + 's';
                     }
-                    
                     const competidores = {};
                     data.forEach(item => {
                         if (item.id_p1 && item.tempo_p1 > 0) {
@@ -400,15 +393,12 @@
                             }
                         }
                     });
-
                     let rankingArray = Object.values(competidores).map(c => {
                         const soma = (c.melhorTempoP1 || 0) + (c.melhorTempoP2 || 0);
                         return { ...c, somaMelhoresTempos: soma };
                     });
-
                     rankingArray = rankingArray.filter(c => c.melhorTempoP1 > 0 && c.melhorTempoP2 > 0);
                     rankingArray.sort((a, b) => a.somaMelhoresTempos - b.somaMelhoresTempos);
-
                     if (rankingArray.length > 0) {
                         const king = rankingArray[0];
                         kingNameEl.textContent = king.nome;
@@ -419,19 +409,15 @@
                         kingCategoryEl.textContent = 'com tempos totais';
                         kingTimeEl.textContent = '';
                     }
-
                     const categoriaSelecionada = categoriaSelectEl.value;
                     if (categoriaSelecionada !== 'TODOS') {
                         rankingArray = rankingArray.filter(c => c.categoria === categoriaSelecionada);
                     }
-
                     const categorias = new Set(Object.values(competidores).map(c => c.categoria).filter(c => c));
                     const categoriasArray = ['TODOS', ...Array.from(categorias).sort()];
                     categoriaSelectEl.innerHTML = categoriasArray.map(c => `<option value="${c}" ${c === categoriaSelecionada ? 'selected' : ''}>${c}</option>`).join('');
-
                     rankingBodyEl.innerHTML = '';
                     const melhorTempoTotal = rankingArray.length > 0 ? rankingArray[0].somaMelhoresTempos : 0;
-                    
                     if (rankingArray.length > 0) {
                         let i = 1;
                         rankingArray.forEach(competidor => {
@@ -460,7 +446,6 @@
                 rankingBodyEl.innerHTML = '<tr><td colspan="7" style="color:red; text-align:center;">Erro de conexão com o Apps Script.</td></tr>';
             }
         }
-        
         setInterval(updateRanking, 10000);
         document.addEventListener('DOMContentLoaded', updateRanking);
     </script>
