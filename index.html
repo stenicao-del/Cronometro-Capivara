@@ -1,14 +1,10 @@
 <script>
-    // --- NOVO CÓDIGO DO DASHBOARD ---
     const googleScriptURL = "https://script.google.com/macros/s/AKfycbzcahO1fxsYOJsnznUs98co4OQByHxnmLkVET1F2_pUuXqf7XThRmgBXbkt9I-7NcM/exec";
     const mqttServer = 'wss://broker.hivemq.com:8884/mqtt';
     const clientId = 'web_dashboard_' + Math.random().toString(16).substr(2, 8);
     
-    // Tópicos de resultado (tempo final)
     const TOPIC_RESULTADO_P1 = "cronometro/resultado/pista1";
     const TOPIC_RESULTADO_P2 = "cronometro/resultado/pista2";
-
-    // Tópicos de início (início de nova volta)
     const TOPIC_INICIO_P1 = "cronometro/inicio/pista1";
     const TOPIC_INICIO_P2 = "cronometro/inicio/pista2";
 
@@ -46,47 +42,42 @@
     });
 
     client.on('message', (topic, message) => {
-        const messageString = message.toString();
-        // Esperamos um JSON no formato: { "id": "ASP001", "tempo": 10.550 }
         try {
-            const data = JSON.parse(messageString);
+            const data = JSON.parse(message.toString());
             const idCompetidor = data.id;
             const tempo = data.tempo;
+            const categoria = data.categoria; // Supondo que a categoria venha no JSON
 
             if (topic === TOPIC_RESULTADO_P1) {
                 pista1TimeEl.textContent = tempo.toFixed(3) + "s";
                 checkAndUpdateRecords(tempo, 'pista1');
-                salvarTempoNoSheet(idCompetidor, tempo, 'pista1'); // Salva o tempo na planilha
+                salvarTempoNoSheet(idCompetidor, tempo, 'pista1', categoria);
             } else if (topic === TOPIC_RESULTADO_P2) {
                 pista2TimeEl.textContent = tempo.toFixed(3) + "s";
                 checkAndUpdateRecords(tempo, 'pista2');
-                salvarTempoNoSheet(idCompetidor, tempo, 'pista2'); // Salva o tempo na planilha
+                salvarTempoNoSheet(idCompetidor, tempo, 'pista2', categoria);
             }
         } catch (e) {
             console.error("Mensagem MQTT inválida:", e);
         }
     });
 
-    // Função para salvar o tempo na planilha
-    async function salvarTempoNoSheet(id, tempo, pista) {
+    async function salvarTempoNoSheet(id, tempo, pista, categoria) {
         const payload = {
             action: 'salvarTempo',
             id: id,
             tempo: tempo,
-            pista: pista
+            pista: pista,
+            categoria: categoria
         };
-
         try {
-            const response = await fetch(googleScriptURL, {
+            await fetch(googleScriptURL, {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 headers: {
                     'Content-Type': 'text/plain'
                 }
             });
-            const result = await response.json();
-            console.log("Tempo salvo no sheet:", result.message);
-            // Após salvar, atualiza o ranking para mostrar o novo tempo
             setTimeout(updateRanking, 2000); 
         } catch (error) {
             console.error("Erro ao salvar tempo no Google Sheet:", error);
@@ -98,16 +89,12 @@
             recordPista1 = tempo;
             recordPista1TimeEl.textContent = recordPista1.toFixed(3) + "s";
             recordPista1BoxEl.classList.add('new-record');
-            setTimeout(() => {
-                recordPista1BoxEl.classList.remove('new-record');
-            }, 3000);
+            setTimeout(() => { recordPista1BoxEl.classList.remove('new-record'); }, 3000);
         } else if (pista === 'pista2' && tempo < recordPista2 && tempo > 0) {
             recordPista2 = tempo;
             recordPista2TimeEl.textContent = recordPista2.toFixed(3) + "s";
             recordPista2BoxEl.classList.add('new-record');
-            setTimeout(() => {
-                recordPista2BoxEl.classList.remove('new-record');
-            }, 3000);
+            setTimeout(() => { recordPista2BoxEl.classList.remove('new-record'); }, 3000);
         }
     }
 
@@ -117,49 +104,42 @@
             if (!response.ok) {
                 throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
             }
-            const data = await response.json();
-            if (!Array.isArray(data)) {
-                throw new Error("Resposta do script inválida. Esperado um array.");
-            }
-            let recordP1Found = Infinity;
-            let recordP2Found = Infinity;
-            data.forEach(item => {
-                if (item.tempo_p1 > 0 && item.tempo_p1 < recordP1Found) {
-                    recordP1Found = item.tempo_p1;
-                }
-                if (item.tempo_p2 > 0 && item.tempo_p2 < recordP2Found) {
-                    recordP2Found = item.tempo_p2;
-                }
-            });
-            if (recordP1Found < recordPista1) {
-                recordPista1 = recordP1Found;
-                recordPista1TimeEl.textContent = recordPista1.toFixed(3) + 's';
-            }
-            if (recordP2Found < recordPista2) {
-                recordPista2 = recordP2Found;
-                recordPista2TimeEl.textContent = recordP2Found.toFixed(3) + 's';
-            }
+            const allData = await response.json();
+            const inscricoesData = allData.competidores;
+            const temposData = allData.tempos;
+
             const competidores = {};
-            data.forEach(item => {
-                if (item.id && item.nome) { // O nome deve vir da planilha
-                    const id = item.id;
-                    if (!competidores[id]) {
-                        competidores[id] = { nome: item.nome, categoria: item.categoria, melhorTempoP1: null, melhorTempoP2: null };
-                    }
-                    if (item.tempo_p1 > 0 && (competidores[id].melhorTempoP1 === null || item.tempo_p1 < competidores[id].melhorTempoP1)) {
-                        competidores[id].melhorTempoP1 = item.tempo_p1;
-                    }
-                    if (item.tempo_p2 > 0 && (competidores[id].melhorTempoP2 === null || item.tempo_p2 < competidores[id].melhorTempoP2)) {
-                        competidores[id].melhorTempoP2 = item.tempo_p2;
-                    }
+
+            inscricoesData.forEach(inscricao => {
+                competidores[inscricao.qr_code] = {
+                    nome: inscricao.nome_competidor,
+                    categoria: inscricao.categoria,
+                    melhorTempoP1: Infinity,
+                    melhorTempoP2: Infinity
+                };
+            });
+
+            temposData.forEach(tempo => {
+                const qrP1 = tempo.qr_pista1;
+                const qrP2 = tempo.qr_pista2;
+                if (competidores[qrP1] && tempo.tempo_pista_1 > 0 && tempo.tempo_pista_1 < competidores[qrP1].melhorTempoP1) {
+                    competidores[qrP1].melhorTempoP1 = tempo.tempo_pista_1;
+                }
+                if (competidores[qrP2] && tempo.tempo_pista_2 > 0 && tempo.tempo_pista_2 < competidores[qrP2].melhorTempoP2) {
+                    competidores[qrP2].melhorTempoP2 = tempo.tempo_pista_2;
                 }
             });
+
             let rankingArray = Object.values(competidores).map(c => {
-                const soma = (c.melhorTempoP1 || 0) + (c.melhorTempoP2 || 0);
-                return { ...c, somaMelhoresTempos: soma };
+                const melhorTempoP1 = c.melhorTempoP1 === Infinity ? 0 : c.melhorTempoP1;
+                const melhorTempoP2 = c.melhorTempoP2 === Infinity ? 0 : c.melhorTempoP2;
+                const soma = (melhorTempoP1 + melhorTempoP2) || 0;
+                return { ...c, melhorTempoP1, melhorTempoP2, somaMelhoresTempos: soma };
             });
+
             rankingArray = rankingArray.filter(c => c.melhorTempoP1 > 0 && c.melhorTempoP2 > 0);
             rankingArray.sort((a, b) => a.somaMelhoresTempos - b.somaMelhoresTempos);
+
             if (rankingArray.length > 0) {
                 const king = rankingArray[0];
                 kingNameEl.textContent = king.nome;
@@ -170,34 +150,35 @@
                 kingCategoryEl.textContent = 'com tempos totais';
                 kingTimeEl.textContent = '';
             }
+
             const categoriaSelecionada = categoriaSelectEl.value;
-            if (categoriaSelecionada !== 'TODOS') {
-                rankingArray = rankingArray.filter(c => c.categoria === categoriaSelecionada);
-            }
-            const categorias = new Set(Object.values(competidores).map(c => c.categoria).filter(c => c));
+            const categorias = new Set(rankingArray.map(c => c.categoria).filter(c => c));
             const categoriasArray = ['TODOS', ...Array.from(categorias).sort()];
             categoriaSelectEl.innerHTML = categoriasArray.map(c => `<option value="${c}" ${c === categoriaSelecionada ? 'selected' : ''}>${c}</option>`).join('');
+            
             rankingBodyEl.innerHTML = '';
             const melhorTempoTotal = rankingArray.length > 0 ? rankingArray[0].somaMelhoresTempos : 0;
-            if (rankingArray.length > 0) {
+            const filteredRanking = categoriaSelecionada === 'TODOS' ? rankingArray : rankingArray.filter(c => c.categoria === categoriaSelecionada);
+
+            if (filteredRanking.length > 0) {
                 let i = 1;
-                rankingArray.forEach(competidor => {
+                filteredRanking.forEach(competidor => {
                     const row = document.createElement('tr');
                     const diferenca = competidor.somaMelhoresTempos - melhorTempoTotal;
                     row.innerHTML = `
                         <td>${i++}</td>
                         <td>${competidor.nome}</td>
                         <td>${competidor.categoria}</td>
-                        <td>${competidor.melhorTempoP1 ? competidor.melhorTempoP1.toFixed(3) + 's' : 'N/A'}</td>
-                        <td>${competidor.melhorTempoP2 ? competidor.melhorTempoP2.toFixed(3) + 's' : 'N/A'}</td>
-                        <td>${competidor.somaMelhoresTempos ? competidor.somaMelhoresTempos.toFixed(3) + 's' : 'N/A'}</td>
+                        <td>${competidor.melhorTempoP1 > 0 ? competidor.melhorTempoP1.toFixed(3) + 's' : 'N/A'}</td>
+                        <td>${competidor.melhorTempoP2 > 0 ? competidor.melhorTempoP2.toFixed(3) + 's' : 'N/A'}</td>
+                        <td>${competidor.somaMelhoresTempos > 0 ? competidor.somaMelhoresTempos.toFixed(3) + 's' : 'N/A'}</td>
                         <td>${diferenca > 0 ? '+' + diferenca.toFixed(3) + 's' : '-'}</td>
                     `;
                     rankingBodyEl.appendChild(row);
                 });
             } else {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="7" style="text-align: center;">Nenhum competidor com tempos registrados para ambas as pistas.</td>`;
+                row.innerHTML = `<td colspan="7" style="text-align: center;">Nenhum competidor com tempos registrados para ambas as pistas nesta categoria.</td>`;
                 rankingBodyEl.appendChild(row);
             }
         } catch (error) {
