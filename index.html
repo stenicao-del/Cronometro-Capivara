@@ -46,29 +46,31 @@
             const data = JSON.parse(message.toString());
             const idCompetidor = data.id;
             const tempo = data.tempo;
-            const categoria = data.categoria;
+            // Remover a tentativa de pegar a categoria da mensagem MQTT
+            // const categoria = data.categoria;
 
             if (topic === TOPIC_RESULTADO_P1) {
                 pista1TimeEl.textContent = tempo.toFixed(3) + "s";
                 checkAndUpdateRecords(tempo, 'pista1');
-                salvarTempoNoSheet(idCompetidor, tempo, 'pista1', categoria);
+                // Enviar o ID e o tempo; o Apps Script buscará a categoria
+                salvarTempoNoSheet(idCompetidor, tempo, 'pista1'); 
             } else if (topic === TOPIC_RESULTADO_P2) {
                 pista2TimeEl.textContent = tempo.toFixed(3) + "s";
                 checkAndUpdateRecords(tempo, 'pista2');
-                salvarTempoNoSheet(idCompetidor, tempo, 'pista2', categoria);
+                // Enviar o ID e o tempo; o Apps Script buscará a categoria
+                salvarTempoNoSheet(idCompetidor, tempo, 'pista2');
             }
         } catch (e) {
             console.error("Mensagem MQTT inválida:", e);
         }
     });
 
-    async function salvarTempoNoSheet(id, tempo, pista, categoria) {
+    async function salvarTempoNoSheet(id, tempo, pista) {
         const payload = {
             action: 'salvarTempo',
             id: id,
             tempo: tempo,
-            pista: pista,
-            categoria: categoria
+            pista: pista
         };
         try {
             await fetch(googleScriptURL, {
