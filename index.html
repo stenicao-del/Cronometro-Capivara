@@ -46,7 +46,7 @@
             const data = JSON.parse(message.toString());
             const idCompetidor = data.id;
             const tempo = data.tempo;
-            const categoria = data.categoria; // Supondo que a categoria venha no JSON
+            const categoria = data.categoria;
 
             if (topic === TOPIC_RESULTADO_P1) {
                 pista1TimeEl.textContent = tempo.toFixed(3) + "s";
